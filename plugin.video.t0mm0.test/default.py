@@ -20,12 +20,66 @@ import os
 import re
 import string
 import sys
+import xbmcplugin
 from t0mm0.common.addon import Addon
 from t0mm0.common.net import Net
+from urlresolver import common
 import urlresolver
+import urllib2
 
+
+def get_movie_page(url, deep = False):
+	success = False
+	try:
+		html = net.http_GET(url).content
+		success = True
+	except urllib2.HTTPError, e:
+		 addon.log_debug('HTTP Error: %s' % e)
+	
+	if success:
+		# get total pages
+		p_r = '(\d+)</a></li><li title="Next Page".+?href="(.+?)(\d+)\/".+?<'
+		pages_regex = re.finditer(p_r, html)
+		total_pages = 1
+		for s in pages_regex:
+			total_pages, url, current_page = s.groups()
+		#<div class="list_item.+?src="(.+?)".+?(frelease dvd|frelease) to get dvd symbol
+		# scan items
+		r = '<div class="list_item.+?src="(.+?)".+?(frelease dvd|frelease).+?<a class="plot".+?href="(.+?)".+?<b>(.+?)<\/b>(.+?)<.+?Rank: ([\d\.]+) Votes:(\d+).+?'
+		regex = re.finditer(r, html, re.DOTALL)
+		total_items = 0
+		for s in regex:
+			thumb, dvd, url, title, plot, rating, votes = s.groups()
+			if dvd.find("dvd") != -1:
+			    dvd = " (DVD)"
+			else:
+			    dvd = ""
+			total_items += 1
+			addon.add_directory({'mode': 'movie',
+								 'url': base_url + url,
+								 'imageurl': base_url + thumb},
+								 {
+								 'title': title + dvd,
+								 'votes': int(votes),
+								 'rating': float(rating),
+								 'plotoutline': plot,
+								 'secondlabel': dvd
+								 },
+								 img=base_url+thumb,
+								 total_items=int(total_pages)*10)
+		
+		# get next page
+		if deep == True:
+			pages_regex = re.finditer(p_r, html)
+			for s in pages_regex:
+				total_pages, url, current_page = s.groups()
+				print "%s page of %s" % (total_pages, current_page)
+				get_movie_page(base_url + url + current_page + "/")
+
+ 
 addon = Addon('plugin.video.t0mm0.test', sys.argv)
 net = Net()
+
 
 logo = os.path.join(addon.get_path(), 'art','logo.jpg')
 
@@ -33,7 +87,7 @@ base_url = 'http://tubeplus.me'
 
 mode = addon.queries['mode']
 play = addon.queries.get('play', None)
-
+print "mode=" + mode
 if play:
     url = addon.queries.get('url', '')
     host = addon.queries.get('host', '')
@@ -83,9 +137,9 @@ elif mode == 'test':
                          {'title': 'novamov url'})
     addon.add_video_item({'host': 'novamov.com', 'media_id': 'kdshwq2cj6vxv'},
                          {'title': 'novamov media id'})
-    addon.add_video_item({'url': 'http://www.putlocker.com/file/DFE7599AE064911A'},
+    addon.add_video_item({'url': 'http://www.putlocker.com/file/A280B88DADE9B8ED'},
                          {'title': 'putlocker url'})
-    addon.add_video_item({'host': 'putlocker.com', 'media_id': 'DFE7599AE064911A'},
+    addon.add_video_item({'host': 'putlocker.com', 'media_id': 'A280B88DADE9B8ED'},
                          {'title': 'putlocker media id'})
     addon.add_video_item({'url': 'http://rapidvideo.com/view/hwksai28'},
                          {'title': 'rapidvideo url'})
@@ -180,7 +234,60 @@ elif mode == 'tv':
 
     else:
         addon.add_directory({'mode': 'tv', 'browse': 'alpha'}, {'title': 'A-Z'})
-
+        
+elif mode == 'movies':
+    
+    xbmc.executebuiltin("Container.SetViewMode(%s)" % 'movies' )
+    xbmcplugin.setContent( int( sys.argv[ 1 ] ), 'movies') 
+    
+    browse = addon.queries.get('browse', False)
+    if browse == 'alpha':
+        letter = addon.queries.get('letter', False)
+        if letter:
+            url = 'http://tubeplus.me/browse/movies/All_Genres/%s/' % letter
+            url = addon.queries.get('next_url', url)
+            get_movie_page(url, True)
+        else:
+            addon.add_directory({'mode': 'movies',
+                                 'browse': 'alpha',
+                                 'letter': '-'}, {'title': '#'})
+            for l in string.uppercase:
+                addon.add_directory({'mode': 'movies',
+                                     'browse': 'alpha',
+                                     'letter': l}, {'title': l})
+    elif browse == 'latest':
+        print 'latest'
+        url = 'http://www.tubeplus.me/browse/movies/Last/ALL/'
+        get_movie_page(url)
+        
+    elif browse == 'popular':
+        print 'popular'
+        categoryurl = addon.queries.get('categoryurl', False)
+        if categoryurl:
+            get_movie_page(categoryurl, False)
+        else:
+            url = 'http://www.tubeplus.me'
+            html = net.http_GET(url).content
+            
+            r = '<div id="popular">.+?<ul>(.+?)<\/ul>'
+            regex = re.findall(r, html, re.DOTALL)
+            
+            r = 'href="(.+)">(.+?)</a>'
+            regex = re.finditer(r, regex[0])
+            
+            for s in regex:
+                url, title = s.groups()
+                addon.add_directory({'mode': 'movies',
+                                     'browse': 'popular',
+                                     'categoryurl': base_url + url}, {'title': title})
+    else:
+        addon.add_directory({'mode': 'movies', 'browse': 'alpha'}, {'title': 'A-Z'})
+        
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_LABEL )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_TITLE )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_UNSORTED )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_VIDEO_RATING )
+        
 elif mode == 'series':
     url = addon.queries['url']
     html = net.http_GET(url).content
@@ -195,19 +302,49 @@ elif mode == 'series':
                 ep_url = '%s/player/%s/' % (base_url, params[2])
                 title = 'S%sE%s - %s (%s)' % (params[0], params[1],
                                               params[3], params[4])
+                common.addon.log_debug('Episodes %s at %s' % (ep_url, title))
                 addon.add_video_item({'url': ep_url}, {'title': title})
 
+elif mode == 'movie':
+    xbmc.executebuiltin("Container.SetViewMode(%s)" % 'movies' )
+    
+    url = addon.queries['url']
+    html = net.http_GET(url).content
+    
+    r = "<h1>(.+?) \((\d+)\)</h1>.+<b>IMDB:</b>.+<span>tt(\d+)</span>"
+    meta = re.findall(r, html, re.DOTALL)
+    
+    r = "<a.+?href=\"javascript:show\('(\w+?)','(.+?)', '(.+?)'.+?<b>(\d+)% said work.+?<\/b>"
+    regex = re.finditer(r, html, re.DOTALL)
+    for s in regex:
+        id, title, host, quality = s.groups()
+        addon.add_item({'host': host, 'media_id' : id},
+                             {'title': u'%s (%s)' % (meta[0][0] , host),
+                              'date': int(meta[0][1]),
+                              'code': int(meta[0][2]),
+                              'rating': float(quality),
+                              'studio': host},
+                              img=addon.queries['imageurl'],
+                              is_playable=True,
+                              is_folder=False,
+                              item_type='video')
+    xbmcplugin.setContent( int( sys.argv[ 1 ] ), 'movies') 
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_LABEL )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_STUDIO )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_UNSORTED )
+    xbmcplugin.addSortMethod( handle=int( sys.argv[ 1 ] ), sortMethod=xbmcplugin.SORT_METHOD_VIDEO_RATING )
 
 elif mode == 'main':
     addon.show_small_popup('t0mm0 test addon', 'Is now loaded enjoy', 6000,
                            logo)
     addon.add_directory({'mode': 'test'}, {'title': '*test links*'})
     addon.add_directory({'mode': 'tv'}, {'title': 'tubeplus.me tv'})
-    addon.add_directory({'mode': 'resolver_settings'}, {'title': 'resolver settings'},
-                        is_folder=False)
+    addon.add_directory({'mode': 'movies'}, {'title': 'tubeplus.me movies'})
+    addon.add_directory({'mode': 'movies', 'browse': 'latest'}, {'title': 'tubeplus.me movies (latest releases)'})
+    addon.add_directory({'mode': 'movies', 'browse': 'popular'}, {'title': 'tubeplus.me movies (popular categories)'})
+    addon.add_directory({'mode': 'resolver_settings'}, {'title': 'resolver settings'}, is_folder=False)
 
 
 if not play:
     addon.end_of_directory()
-
 

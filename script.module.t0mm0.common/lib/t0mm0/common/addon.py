@@ -524,9 +524,9 @@ class Addon:
         self.get_playlist(xbmc.PLAYLIST_VIDEO, new)
 
 
-    def add_item(self, queries, infolabels, img='', fanart='', resolved=False, 
-                 total_items=0, playlist=False, item_type='video', 
-                 is_folder=False):
+    def add_item(self, queries, infolabels, title='', contextmenu_items='', context_replace=False, img='',
+                 fanart='', resolved=False, total_items=0, playlist=False, item_type='video', 
+                 is_folder=False, is_playable=True):
         '''
         Adds an item to the list of entries to be displayed in XBMC or to a 
         playlist.
@@ -556,6 +556,11 @@ class Addon:
             <http://wiki.xbmc.org/?title=InfoLabels>`_).
             
         Kwargs:
+            
+            contextmenu_items (list): A list of contextmenu items
+            
+            context_replace (bool): To replace the xbmc default contextmenu items
+                    
             img (str): A URL to an image file to be used as an icon for this
             entry.
             
@@ -583,57 +588,71 @@ class Addon:
             play = self.build_plugin_url(queries)
         else: 
             play = resolved
-        listitem = xbmcgui.ListItem(infolabels['title'], iconImage=img, 
+        
+        secondlabel = '';
+        if title == '':
+        	title = infolabels['title']
+        	if 'secondlabel' in infolabels:
+        		secondLabel = infolabels['secondlabel']
+        else:
+            secondlabel = infolabels['title']
+            
+        listitem = xbmcgui.ListItem(title, secondlabel, iconImage=img, 
                                     thumbnailImage=img)
         listitem.setInfo(item_type, infolabels)
-        listitem.setProperty('IsPlayable', 'true')
+        playable = is_playable and 'true' or 'false'
+        listitem.setProperty('IsPlayable', playable)
         listitem.setProperty('fanart_image', fanart)
+        if contextmenu_items:
+            listitem.addContextMenuItems(contextmenu_items, replaceItems=context_replace)        
         if playlist is not False:
-            self.log_debug('adding item: %s - %s to playlist' % \
-                                                    (infolabels['title'], play))
+            self.log_debug('adding %s: %s - %s to playlist' % \
+                                                    (item_type, infolabels['title'], play))
             playlist.add(play, listitem)
         else:
-            self.log_debug('adding item: %s - %s' % (infolabels['title'], play))
-            xbmcplugin.addDirectoryItem(self.handle, play, listitem, 
+            self.log_debug('adding %s (handle %s): %s - %s (is_folder=%s)' % (item_type, self.handle, infolabels['title'], play, is_folder))
+            listitem_added = xbmcplugin.addDirectoryItem(self.handle, play, listitem, 
                                         isFolder=is_folder, 
                                         totalItems=total_items)
+            if listitem_added == False:
+            	self.log_error('Error adding list item')
 
 
-    def add_video_item(self, queries, infolabels, img='', fanart='', 
-                       resolved=False, total_items=0, playlist=False):
+    def add_video_item(self, queries, infolabels, contextmenu_items='', context_replace=False,
+                       img='', fanart='', resolved=False, total_items=0, playlist=False):
         '''
         Convenience method to add a video item to the directory list or a 
         playlist.
         
         See :meth:`add_item` for full infomation
         '''
-        self.add_item(queries, infolabels, img, fanart, resolved, total_items, 
-                      playlist, item_type='video')
+        self.add_item(queries, infolabels, '', contextmenu_items, context_replace, img, fanart,
+                      resolved, total_items, playlist, item_type='video')
 
 
-    def add_music_item(self, queries, infolabels, img='', fanart='', 
-                       resolved=False, total_items=0, playlist=False):
+    def add_music_item(self, queries, infolabels, contextmenu_items='', context_replace=False,
+                        img='', fanart='', resolved=False, total_items=0, playlist=False):
         '''
         Convenience method to add a music item to the directory list or a 
         playlist.
         
         See :meth:`add_item` for full infomation
         '''
-        self.add_item(queries, infolabels, img, fanart, resolved, total_items, 
-                      playlist, item_type='music')
+        self.add_item(queries, infolabels, '', contextmenu_items, img, context_replace, fanart,
+                      resolved, total_items, playlist, item_type='music')
 
 
-    def add_directory(self, queries, infolabels, img='', fanart='', 
-                      total_items=0, is_folder=True):
+    def add_directory(self, queries, infolabels, contextmenu_items='', context_replace=False,
+                       img='', fanart='', total_items=0, is_folder=True, is_playable=True, item_type='video'):
         '''
         Convenience method to add a directory to the display list or a 
         playlist.
         
         See :meth:`add_item` for full infomation
         '''
-        self.add_item(queries, infolabels, img, fanart, total_items=total_items, 
-                      resolved=self.build_plugin_url(queries), 
-                      is_folder=is_folder)
+        self.add_item(queries, infolabels, contextmenu_items=contextmenu_items, context_replace=context_replace, img=img, fanart=fanart,
+                      total_items=total_items, resolved=self.build_plugin_url(queries), 
+                      is_folder=is_folder, is_playable=is_playable, item_type=item_type)
 
     def end_of_directory(self):
         '''Tell XBMC that we have finished adding items to this directory.'''
