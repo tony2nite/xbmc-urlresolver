@@ -123,7 +123,7 @@ class HostedMediaFile:
         '''
         if self._resolvers:
             resolver = self._resolvers[0]
-            common.addon.log_debug('resolving using %s plugin' % resolver.name)
+            common.addon.log_debug('resolving %s using %s plugin' % (self._host, resolver.name))
             if SiteAuth in resolver.implements:
                 common.addon.log_debug('logging in')
                 resolver.login()
